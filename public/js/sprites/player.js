@@ -3,7 +3,7 @@
   var ANIMATIONS = {
     IDLE : {
       name : 'idle',
-      frames : [0,1,2,3],
+      frames : [ 0, 1, 2, 3 ],
       fps : 5
     }
   };
@@ -13,15 +13,71 @@
     RIGHT : 1
   };
 
+  var WALK_SPEED = 4000;
+
+  var JUMP_HEIGHT = 1430;
+
+  var DIVE_SPEED = 4000;
+
+  var DIVE_DISTANCE = 400;
+
+  var DIVE_JUMP_TIMEOUT = 125;
+
+  var ANIMATIONS = {
+    IDLE : {
+      name : 'idle',
+      frames : [0,1,2,3],
+      fps : 5
+    },
+    WALK : {
+      name : 'walk',
+      frames : [4,5],
+      fps : 10
+    },
+    JUMP : {
+      name : 'jump',
+      frames : [6],
+      fps : 1
+    },
+    DIVE : {
+      name : 'dive',
+      frames : [7],
+      fps : 1
+    },
+    DEAD : {
+      name : 'dead',
+      frames : [8],
+      fps : 1
+    }
+  };
+
+  function select_sprite_row ( player_id ){
+    return function( frame_id ){
+      return frame_id + player_id * ToeFu.ASSETS.SPRITESHEET.PLAYER.frames_per_row;
+    };
+  }
+
   ToeFu.Player = function ( game, id, name ) {
-    this.game = game,
-    this.id = id,
+    this.game = game;
+    this.id = id;
     this.name = name? name : 'Player ' + (id+1);
     this.facing; //direction the player is facing
+    this.is_diving;
 
     Phaser.Sprite.call( this, game, 0, 0, ToeFu.ASSETS.SPRITESHEET.PLAYER.name );
 
-    this.animations.add( ANIMATIONS.IDLE.name, ANIMATIONS.IDLE.frames );
+    // enable physics (adds this.body)
+    this.game.physics.enable(this, Phaser.Physics.ARCADE);
+
+    //set center registration point
+    this.anchor = { x : 0.5, y : 0.5 };
+
+    this.animations.add(ANIMATIONS.IDLE.name, ANIMATIONS.IDLE.frames.map(select_sprite_row(this.id)));
+    this.animations.add(ANIMATIONS.WALK.name, ANIMATIONS.WALK.frames.map(select_sprite_row(this.id)));
+    this.animations.add(ANIMATIONS.JUMP.name, ANIMATIONS.JUMP.frames.map(select_sprite_row(this.id)));
+    this.animations.add(ANIMATIONS.DIVE.name, ANIMATIONS.DIVE.frames.map(select_sprite_row(this.id)));
+    this.animations.add(ANIMATIONS.DEAD.name, ANIMATIONS.DEAD.frames.map(select_sprite_row(this.id)));
+
     this.animations.play( ANIMATIONS.IDLE.name, ANIMATIONS.IDLE.fps, true );
 
   };
@@ -38,7 +94,87 @@
   };
 
   ToeFu.Player.prototype.update = function () {
-    this.scale.x =FACING_FACTOR[ this.facing ];
+     // update facing
+    if( this.alive ){
+      this.scale.x = FACING_FACTOR[ this.facing ];
+    }
+
+    // update animations
+    if(!this.alive){
+      this.animations.play(ANIMATIONS.DEAD.name);
+    }else if(this.is_diving){
+      this.animations.play(ANIMATIONS.DIVE.name);
+    }else{
+      if(this.body.y < ToeFu.Game.FLOOR_Y){ // in the air
+        this.animations.play(ANIMATIONS.JUMP.name);
+      } else if(this.body.velocity.x !== 0){ // running
+        this.animations.play(ANIMATIONS.WALK.name, ANIMATIONS.WALK.fps, true);
+      } else {
+        this.animations.play(ANIMATIONS.IDLE.name, ANIMATIONS.IDLE.fps, true);
+      }
+    }
+  };
+
+  ToeFu.Player.prototype.jump = function () {
+    if(!this.alive) return;
+     // allow jumping from the floor (not in mid air)
+    if( this.body.y === ToeFu.Game.FLOOR_Y ){
+      this.body.velocity.y = -JUMP_HEIGHT;
+    } else if( this.is_diving ){ // allow jump after dive (in mid air)
+      this.body.velocity.y = -JUMP_HEIGHT*(this.body.y/ToeFu.Game.FLOOR_Y);
+    }
+  };
+
+  ToeFu.Player.prototype.dive = function () {
+    if(!this.alive) return;
+    if( this.body.y < ToeFu.Game.FLOOR_Y ){
+      this.body.velocity.y = DIVE_SPEED;
+      this.body.velocity.x = DIVE_DISTANCE * FACING_FACTOR[ this.facing ];
+      this.is_diving = true;
+    }else{
+      this.body.velocity.y = 0;
+      this.body.velocity.x = 0;
+      this.is_diving = false;
+    }
+  };
+
+  ToeFu.Player.prototype.dive_stop = function () {
+    // reset velocity
+    this.body.velocity.x = 0;
+    this.body.velocity.y = 0;
+    setTimeout(function(){
+      this.is_diving = false;
+    }.bind(this), DIVE_JUMP_TIMEOUT);
+  };
+
+  ToeFu.Player.prototype.step_left = function () {
+    if(!this.alive) return;
+    this.body.velocity.x = -WALK_SPEED;
+  };
+
+  ToeFu.Player.prototype.step_right = function () {
+    if(!this.alive) return;
+    this.body.velocity.x = WALK_SPEED;
+  };
+
+  ToeFu.Player.prototype.stop = function () {
+    this.body.velocity.x = 0;
+  };
+
+   // Custom methods
+
+  ToeFu.Player.prototype.victory = function(){
+    this.is_diving = false;
+
+    // make animation
+
+  };
+
+  ToeFu.Player.prototype.defeat = function(){
+
+    // stop all input
+    this.alive = false;
+
   };
 
 })();
